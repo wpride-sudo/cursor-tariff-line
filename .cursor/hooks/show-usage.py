@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Print the Cursor plan usage percent for the agent window. Never prints tokens."""
+import calendar
 import json
 import os
 import sqlite3
@@ -85,9 +86,41 @@ def spent_percent(usage):
     return "н/д"
 
 
-def allowed_percent():
-    day = date.today().day
-    return str((day * 100) // 30) + "%"
+RESET_DAY = 27
+
+
+def shift_month(year, month, step):
+    month += step
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    return year, month
+
+
+def reset_on(year, month):
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(RESET_DAY, last_day))
+
+
+def allowed_percent(today=None):
+    today = today or date.today()
+    this_reset = reset_on(today.year, today.month)
+    if today >= this_reset:
+        start = this_reset
+        year, month = shift_month(today.year, today.month, 1)
+        end = reset_on(year, month)
+    else:
+        year, month = shift_month(today.year, today.month, -1)
+        start = reset_on(year, month)
+        end = this_reset
+    period = (end - start).days
+    if period <= 0:
+        return "0%"
+    elapsed = (today - start).days
+    return str((elapsed * 100) // period) + "%"
 
 
 def usage_line(spent):

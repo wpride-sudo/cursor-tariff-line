@@ -20,7 +20,7 @@ The line is small and not bold.
 
 ## How the numbers are calculated
 
-Allowed is today’s day of the month divided by 30. On the 23rd that is 76%.
+Allowed spreads the plan evenly from the 27th, the day the counter resets. It is the days since the previous 27th divided by the days until the next 27th. On 23 October the previous reset is 27 September and the next is 27 October, so 26 of 30 days is 86%. In February the reset falls on the last day of the month.
 
 Now is the current Cursor plan usage percent, rounded to a whole number.
 
@@ -86,7 +86,7 @@ The rule `.cursor/rules/show-date.mdc` still has to be placed in each project wh
 
 ## Как считаются числа
 
-Allowed — это сегодняшнее число месяца, делённое на 30. Для 23-го числа это 76%.
+Allowed распределяет тариф равномерно от 27-го числа, дня обновления счётчика. Это дни с прошлого 27-го числа, делённые на дни до следующего 27-го. Для 23 октября прошлое обновление — 27 сентября, следующее — 27 октября, поэтому 26 дней из 30 дают 86%. В феврале обновление приходится на последний день месяца.
 
 Now — общий процент расхода текущего тарифа Cursor, округлённый до целого.
 

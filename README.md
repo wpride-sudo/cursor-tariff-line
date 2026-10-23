@@ -1,7 +1,5 @@
 # Cursor plan usage line
 
-Short text for the GitHub About field:
-
 Shows a Cursor agent line like “Allowed 76%, now 74% +1” only when the plan usage percent goes up.
 
 ![Usage line in the agent window](images/usage-line.png)
@@ -65,8 +63,6 @@ Create `%USERPROFILE%\.cursor\hooks.json`:
 The rule `.cursor/rules/show-date.mdc` still has to be placed in each project where the agent should draw the line.
 
 # Строка расхода тарифа Cursor
-
-Короткое описание для поля About на GitHub:
 
 Показывает в окне агента Cursor строку «Allowed 76%, now 74% +1» только в тот момент, когда процент расхода тарифа вырос.
 

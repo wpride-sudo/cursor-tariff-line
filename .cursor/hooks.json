@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python.exe .cursor/hooks/show-usage.py"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "python.exe .cursor/hooks/show-usage.py"
+      }
+    ]
+  }
+}

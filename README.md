@@ -24,6 +24,25 @@ Now is the current Cursor plan usage percent, rounded to a whole number.
 
 The increase is measured from the last saved Now value. A drop does not show the line.
 
+## Set the reset day in Cursor
+
+1. In Cursor press `Ctrl+P` (`Cmd+P` on macOS) and open `.cursor/hooks/config.json`.
+2. Set `resetDay` to the day of the month when your counter resets, from 1 to 31.
+
+```json
+{
+  "resetDay": 27
+}
+```
+
+3. Save the file. The next agent message uses the new day.
+
+If the hooks are installed for every project, edit the same `resetDay` in the user file instead: `%USERPROFILE%\.cursor\hooks\config.json` on Windows, or `~/.cursor/hooks/config.json` on macOS and Linux.
+
+## Show the current percent now
+
+In the agent chat type `/show-usage` and send it. Cursor shows Allowed and Now even when the percent did not go up. That reply has no red `+1`.
+
 ## Files
 
 - `.cursor/hooks.json` starts the check at session start and before each message.
@@ -97,6 +116,25 @@ Allowed распределяет тариф равномерно от дня в 
 Now — общий процент расхода текущего тарифа Cursor, округлённый до целого.
 
 Прирост считается от предыдущего сохранённого значения Now. Падение процента строку не показывает.
+
+## Как указать день месяца в Cursor
+
+1. В Cursor нажмите `Ctrl+P` (`Cmd+P` на macOS) и откройте `.cursor/hooks/config.json`.
+2. Запишите в `resetDay` день месяца, когда обновляется счётчик, от 1 до 31.
+
+```json
+{
+  "resetDay": 27
+}
+```
+
+3. Сохраните файл. Следующее сообщение агента возьмёт новый день.
+
+Если хуки стоят для всех проектов, тот же `resetDay` меняйте в пользовательском файле: `%USERPROFILE%\.cursor\hooks\config.json` на Windows или `~/.cursor/hooks/config.json` на macOS и Linux.
+
+## Как принудительно показать текущий процент
+
+В чате агента наберите `/show-usage` и отправьте. Cursor покажет Allowed и Now, даже если процент не вырос. В этом ответе красного `+1` не будет.
 
 ## Состав
 

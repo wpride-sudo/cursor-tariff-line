@@ -64,12 +64,6 @@ Create `%USERPROFILE%\.cursor\hooks.json`:
 
 The rule `.cursor/rules/show-date.mdc` still has to be placed in each project where the agent should draw the line.
 
-## What stays out of the repository
-
-On this computer the script reads the existing Cursor sign-in and requests plan usage. The token is not written into the repository files.
-
-The last percent is stored locally in `%USERPROFILE%\.cursor\hooks\usage-last.json`. Do not upload that file to GitHub.
-
 # Строка расхода тарифа Cursor
 
 Короткое описание для поля About на GitHub:
@@ -135,9 +129,3 @@ Now — общий процент расхода текущего тарифа C
 ```
 
 Правило `.cursor/rules/show-date.mdc` всё равно нужно положить в каждый проект, где агент должен рисовать строку.
-
-## Что не попадает в репозиторий
-
-Скрипт на этом компьютере читает уже существующий вход Cursor и запрашивает расход тарифа. Токен в файлы репозитория не записывается.
-
-Последний процент хранится локально в `%USERPROFILE%\.cursor\hooks\usage-last.json`. Этот файл не нужно загружать на GitHub.

@@ -10,20 +10,34 @@ import urllib.error
 import urllib.request
 from datetime import date
 
-STATE_DB = os.path.join(
-    os.environ.get("APPDATA", ""),
-    "Cursor",
-    "User",
-    "globalStorage",
-    "state.vscdb",
-)
 USAGE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
-LAST_USAGE_PATH = os.path.join(
-    os.environ.get("USERPROFILE", ""),
-    ".cursor",
-    "hooks",
-    "usage-last.json",
-)
+DEFAULT_RESET_DAY = 27
+
+
+def home_dir():
+    return os.environ.get("USERPROFILE") or os.path.expanduser("~")
+
+
+def cursor_user_dir():
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or os.path.join(home_dir(), "AppData", "Roaming")
+        return os.path.join(base, "Cursor", "User")
+    if sys.platform == "darwin":
+        return os.path.join(home_dir(), "Library", "Application Support", "Cursor", "User")
+    config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home_dir(), ".config")
+    return os.path.join(config_home, "Cursor", "User")
+
+
+def state_db_path():
+    return os.path.join(cursor_user_dir(), "globalStorage", "state.vscdb")
+
+
+def hooks_home():
+    return os.path.join(home_dir(), ".cursor", "hooks")
+
+
+LAST_USAGE_PATH = os.path.join(hooks_home(), "usage-last.json")
+STATE_DB = state_db_path()
 
 
 def fail(message):
@@ -86,7 +100,29 @@ def spent_percent(usage):
     return "н/д"
 
 
-RESET_DAY = 27
+def read_reset_day():
+    env_day = os.environ.get("CURSOR_USAGE_RESET_DAY")
+    if env_day:
+        try:
+            day = int(env_day)
+            if 1 <= day <= 31:
+                return day
+        except ValueError:
+            pass
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
+        os.path.join(hooks_home(), "config.json"),
+    ]
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+            day = int(data.get("resetDay"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if 1 <= day <= 31:
+            return day
+    return DEFAULT_RESET_DAY
 
 
 def shift_month(year, month, step):
@@ -102,7 +138,7 @@ def shift_month(year, month, step):
 
 def reset_on(year, month):
     last_day = calendar.monthrange(year, month)[1]
-    return date(year, month, min(RESET_DAY, last_day))
+    return date(year, month, min(read_reset_day(), last_day))
 
 
 def allowed_percent(today=None):
@@ -184,14 +220,38 @@ def line_tone(spent):
     return "success"
 
 
+def display_context(label, tone, change):
+    text = (
+        "Не используй span и не печатай эту строку чёрным текстом: в чате цвет сбрасывается. "
+        "Покажи в окне агента только цветную строку «"
+        + label
+        + "» через встроенную визуализацию, одним абзацем, без шкал, маленьким обычным шрифтом без жирного начертания, класс vis-text-small. "
+        "Цвет текста: var(--"
+        + tone
+        + "). Зелёный success, если Now меньше Allowed. Красный danger, если Now равно Allowed или больше."
+    )
+    if change:
+        text += (
+            " Процент вырос на "
+            + change
+            + ". Справа припиши красным var(--danger) разницу «"
+            + change
+            + "». В ответах без нового прироста эту строку не показывай."
+        )
+    else:
+        text += " Пользователь запросил показ сейчас. Прироста не приписывай."
+    return text
+
+
 def main():
+    force_show = "--show" in sys.argv
     try:
         token = read_access_token()
         usage = fetch_usage(token)
         spent = spent_percent(usage)
         label = usage_line(spent)
         tone = line_tone(spent)
-        change = change_label(spent)
+        change = None if force_show else change_label(spent)
     except urllib.error.HTTPError as error:
         fail("ошибка " + str(error.code))
         return
@@ -199,21 +259,10 @@ def main():
         fail(str(error))
         return
 
-    if change and tone:
-        context = (
-            "Не используй span и не печатай эту строку чёрным текстом: в чате цвет сбрасывается. "
-            "Процент вырос на "
-            + change
-            + ". Покажи в окне агента только цветную строку «"
-            + label
-            + "» через встроенную визуализацию, одним абзацем, без шкал, маленьким обычным шрифтом без жирного начертания, класс vis-text-small. "
-            "Цвет текста: var(--"
-            + tone
-            + "). Зелёный success, если Now меньше Allowed. Красный danger, если Now равно Allowed или больше. "
-            "Справа припиши красным var(--danger) разницу «"
-            + change
-            + "». В ответах без нового прироста эту строку не показывай."
-        )
+    if force_show and tone:
+        context = display_context(label, tone, None)
+    elif change and tone:
+        context = display_context(label, tone, change)
     else:
         context = "Строку расхода тарифа в этом ответе не показывай: прироста процента не было."
     payload = {

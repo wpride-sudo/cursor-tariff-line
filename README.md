@@ -8,7 +8,7 @@ Shows a Cursor agent line like “Allowed 76%, now 74% +1” only when the plan 
 
 The line appears once in the agent reply when the spent share of the plan increases. Example: it was 73% and became 74%. The reply shows “Allowed 76%, now 74%” with “+1” in red on the right.
 
-If the percent did not go up, there is no line.
+If the percent did not go up, there is no line. Run the `show-usage` command when you want Allowed and Now immediately.
 
 The line is small and not bold.
 
@@ -18,7 +18,7 @@ The line is small and not bold.
 
 ## How the numbers are calculated
 
-Allowed spreads the plan evenly from the 27th, the day the counter resets. It is the days since the previous 27th divided by the days until the next 27th. On 23 October the previous reset is 27 September and the next is 27 October, so 26 of 30 days is 86%. In February the reset falls on the last day of the month.
+Allowed spreads the plan evenly from the reset day in `.cursor/hooks/config.json` (`resetDay`, 27 by default). It is the days since the previous reset divided by the days until the next one. On 23 October, with reset day 27, that is 26 of 30 days, or 86%. In a short month the reset falls on the last day. You can also set `CURSOR_USAGE_RESET_DAY`.
 
 Now is the current Cursor plan usage percent, rounded to a whole number.
 
@@ -29,18 +29,28 @@ The increase is measured from the last saved Now value. A drop does not show the
 - `.cursor/hooks.json` starts the check at session start and before each message.
 - `.cursor/hooks/show-usage.py` reads plan usage and decides whether it increased.
 - `.cursor/rules/show-date.mdc` tells the agent how to draw the line.
+- `.cursor/commands/show-usage.md` shows Allowed and Now on request.
+- `.cursor/hooks/config.json` sets `resetDay`.
+- `.cursor-plugin/plugin.json` is the Cursor plugin manifest.
+
+GitHub topics: `cursor`, `usage`, `hooks`.
 
 ## Install in one project
 
-You need Windows, Python on `PATH` as `python.exe`, and an active Cursor sign-in on this computer.
+You need Python on `PATH` (`python`, or `python.exe` on Windows) and an active Cursor sign-in. This works on Windows, macOS, and Linux.
 
-Copy the `.cursor` folder into the project root. Open a new agent chat. An existing chat does not pick up the rule.
+Copy the `.cursor` folder into the project root. Set `resetDay` in `.cursor/hooks/config.json`. Open a new agent chat. An existing chat does not pick up the rule.
+
+To install it as a plugin, use this repository. The manifest is `.cursor-plugin/plugin.json`.
 
 ## Install for every project
 
-Copy `show-usage.py` to `%USERPROFILE%\.cursor\hooks\`.
+Copy `show-usage.py` and `config.json` to the user hooks folder:
 
-Create `%USERPROFILE%\.cursor\hooks.json`:
+- Windows: `%USERPROFILE%\.cursor\hooks\`
+- macOS and Linux: `~/.cursor/hooks/`
+
+Create `hooks.json` in `~/.cursor` on macOS and Linux, or `%USERPROFILE%\.cursor\hooks.json` on Windows:
 
 ```json
 {
@@ -48,19 +58,19 @@ Create `%USERPROFILE%\.cursor\hooks.json`:
   "hooks": {
     "sessionStart": [
       {
-        "command": "python.exe ./hooks/show-usage.py"
+        "command": "python ./hooks/show-usage.py"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "python.exe ./hooks/show-usage.py"
+        "command": "python ./hooks/show-usage.py"
       }
     ]
   }
 }
 ```
 
-The rule `.cursor/rules/show-date.mdc` still has to be placed in each project where the agent should draw the line.
+On Windows, change `python` to `python.exe` if the hook does not start. The rule `.cursor/rules/show-date.mdc` and the command `.cursor/commands/show-usage.md` still have to be placed in each project where the agent should draw the line.
 
 # Строка расхода тарифа Cursor
 
@@ -72,7 +82,7 @@ The rule `.cursor/rules/show-date.mdc` still has to be placed in each project wh
 
 Строка появляется в ответе агента один раз, когда доля потраченного тарифа увеличилась. Пример: было 73%, стало 74%. В ответе будет «Allowed 76%, now 74%» и справа красным «+1».
 
-Если процент не вырос, строки нет.
+Если процент не вырос, строки нет. Команда `show-usage` показывает Allowed и Now в любой момент.
 
 Строка маленькая, без жирного шрифта.
 
@@ -82,7 +92,7 @@ The rule `.cursor/rules/show-date.mdc` still has to be placed in each project wh
 
 ## Как считаются числа
 
-Allowed распределяет тариф равномерно от 27-го числа, дня обновления счётчика. Это дни с прошлого 27-го числа, делённые на дни до следующего 27-го. Для 23 октября прошлое обновление — 27 сентября, следующее — 27 октября, поэтому 26 дней из 30 дают 86%. В феврале обновление приходится на последний день месяца.
+Allowed распределяет тариф равномерно от дня в `.cursor/hooks/config.json` (`resetDay`, по умолчанию 27). Это дни с прошлого обновления, делённые на дни до следующего. Для 23 октября при дне 27 это 26 дней из 30, то есть 86%. В коротком месяце обновление приходится на последний день. День можно задать и переменной `CURSOR_USAGE_RESET_DAY`.
 
 Now — общий процент расхода текущего тарифа Cursor, округлённый до целого.
 
@@ -93,18 +103,28 @@ Now — общий процент расхода текущего тарифа C
 - `.cursor/hooks.json` запускает расчёт в начале сессии и перед каждым сообщением.
 - `.cursor/hooks/show-usage.py` читает расход тарифа и решает, был ли прирост.
 - `.cursor/rules/show-date.mdc` говорит агенту, как нарисовать строку.
+- `.cursor/commands/show-usage.md` показывает Allowed и Now по запросу.
+- `.cursor/hooks/config.json` задаёт `resetDay`.
+- `.cursor-plugin/plugin.json` — манифест плагина Cursor.
+
+Темы GitHub: `cursor`, `usage`, `hooks`.
 
 ## Установка в один проект
 
-Нужны Windows, Python в `PATH` под именем `python.exe` и вход в Cursor на этом компьютере.
+Нужны Python в `PATH` (`python`, на Windows можно `python.exe`) и вход в Cursor. Работает на Windows, macOS и Linux.
 
-Скопируйте папку `.cursor` в корень проекта. Откройте новый чат агента. Старый чат это правило не подхватит.
+Скопируйте папку `.cursor` в корень проекта. Укажите `resetDay` в `.cursor/hooks/config.json`. Откройте новый чат агента. Старый чат это правило не подхватит.
+
+Чтобы поставить как плагин, используйте этот репозиторий. Манифест лежит в `.cursor-plugin/plugin.json`.
 
 ## Установка для всех проектов
 
-Скопируйте `show-usage.py` в `%USERPROFILE%\.cursor\hooks\`.
+Скопируйте `show-usage.py` и `config.json` в папку хуков пользователя:
 
-Создайте `%USERPROFILE%\.cursor\hooks.json`:
+- Windows: `%USERPROFILE%\.cursor\hooks\`
+- macOS и Linux: `~/.cursor/hooks/`
+
+Создайте `hooks.json` в `~/.cursor` на macOS и Linux или `%USERPROFILE%\.cursor\hooks.json` на Windows:
 
 ```json
 {
@@ -112,16 +132,16 @@ Now — общий процент расхода текущего тарифа C
   "hooks": {
     "sessionStart": [
       {
-        "command": "python.exe ./hooks/show-usage.py"
+        "command": "python ./hooks/show-usage.py"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "python.exe ./hooks/show-usage.py"
+        "command": "python ./hooks/show-usage.py"
       }
     ]
   }
 }
 ```
 
-Правило `.cursor/rules/show-date.mdc` всё равно нужно положить в каждый проект, где агент должен рисовать строку.
+На Windows замените `python` на `python.exe`, если хук не запускается. Правило `.cursor/rules/show-date.mdc` и команду `.cursor/commands/show-usage.md` всё равно нужно положить в каждый проект, где агент должен рисовать строку.

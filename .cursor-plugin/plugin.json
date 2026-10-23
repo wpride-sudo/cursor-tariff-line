@@ -1,0 +1,14 @@
+{
+  "name": "cursor-plan-usage",
+  "displayName": "Cursor plan usage line",
+  "version": "1.0.0",
+  "description": "Shows Allowed and Now in the Cursor agent window when plan usage goes up.",
+  "author": {
+    "name": "Cursor plan usage"
+  },
+  "license": "MIT",
+  "keywords": ["cursor", "usage", "hooks"],
+  "hooks": ".cursor/hooks.json",
+  "rules": ".cursor/rules",
+  "commands": ".cursor/commands"
+}

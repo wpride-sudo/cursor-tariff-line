@@ -56,7 +56,7 @@ GitHub topics: `cursor`, `usage`, `hooks`.
 
 ## Install in one project
 
-You need Python on `PATH` (`python`, or `python.exe` on Windows) and an active Cursor sign-in. This works on Windows, macOS, and Linux.
+You need Python on `PATH` (`python`, or `python.exe` on Windows) and an active Cursor sign-in. This works on Windows, macOS, and Linux. On Windows, current Cursor stores that sign-in encrypted. The script decrypts it on this computer and does not print it.
 
 Copy the `.cursor` folder into the project root. Set `resetDay` in `.cursor/hooks/config.json`. Open a new agent chat. An existing chat does not pick up the rule.
 
@@ -149,7 +149,7 @@ Now — общий процент расхода текущего тарифа C
 
 ## Установка в один проект
 
-Нужны Python в `PATH` (`python`, на Windows можно `python.exe`) и вход в Cursor. Работает на Windows, macOS и Linux.
+Нужны Python в `PATH` (`python`, на Windows можно `python.exe`) и вход в Cursor. Работает на Windows, macOS и Linux. На Windows текущий Cursor хранит этот вход в зашифрованном виде. Скрипт расшифровывает его на этом компьютере и не печатает.
 
 Скопируйте папку `.cursor` в корень проекта. Укажите `resetDay` в `.cursor/hooks/config.json`. Откройте новый чат агента. Старый чат это правило не подхватит.
 

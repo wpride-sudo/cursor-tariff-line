@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Print the Cursor plan usage percent for the agent window. Never prints tokens."""
+import base64
 import calendar
 import json
 import os
@@ -53,22 +54,356 @@ def fail(message):
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 
-def read_access_token():
-    uri = "file:" + STATE_DB.replace("\\", "/") + "?mode=ro"
-    connection = sqlite3.connect(uri, uri=True, timeout=3)
+TOKEN_KEYS = ("cursorAuth/accessToken", "cursorAuth/refreshToken")
+SAFE_STORAGE_PREFIX = "cursor-safe-storage:v1:"
+
+
+def read_auth_value(key):
+    value = read_stored_value(key)
+    if value and key in TOKEN_KEYS:
+        return unwrap_token(value)
+    return value
+
+
+def read_stored_value(key):
+    connection = sqlite3.connect(STATE_DB, timeout=5)
     try:
         row = connection.execute(
             "SELECT value FROM ItemTable WHERE key = ?",
-            ("cursorAuth/accessToken",),
+            (key,),
         ).fetchone()
     finally:
         connection.close()
     if not row or not row[0]:
+        return None
+    value = row[0]
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return value
+
+
+def unwrap_token(value):
+    if not value.startswith(SAFE_STORAGE_PREFIX):
+        return value
+    if sys.platform != "win32":
+        raise RuntimeError("вход Cursor зашифрован, на этой системе его нельзя прочитать")
+    raw = base64.b64decode(value[len(SAFE_STORAGE_PREFIX) :])
+    plain = decrypt_secret_blob(raw).decode("utf-8")
+    if plain.count(".") < 2:
+        raise RuntimeError("не удалось расшифровать вход Cursor")
+    return plain
+
+
+def wrap_token(value):
+    if sys.platform != "win32":
+        return value
+    key = cursor_encryption_key()
+    nonce = os.urandom(12)
+    sealed = aes_gcm_encrypt(key, nonce, value.encode("utf-8"))
+    return SAFE_STORAGE_PREFIX + base64.b64encode(b"v10" + nonce + sealed).decode("ascii")
+
+
+def decrypt_secret_blob(raw):
+    if raw.startswith(b"v10"):
+        if len(raw) < 3 + 12 + 16:
+            raise RuntimeError("не удалось расшифровать вход Cursor")
+        key = cursor_encryption_key()
+        return aes_gcm_decrypt(key, raw[3:15], raw[15:])
+    return _dpapi(raw, protect=False)
+
+
+def cursor_encryption_key():
+    root = os.path.dirname(cursor_user_dir())
+    candidates = (
+        os.path.join(root, "Local State"),
+        os.path.join(cursor_user_dir(), "Local State"),
+    )
+    path = next((item for item in candidates if os.path.isfile(item)), None)
+    if not path:
+        raise RuntimeError("нет ключа шифрования Cursor")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        encoded = payload["os_crypt"]["encrypted_key"]
+    except (OSError, KeyError, json.JSONDecodeError):
+        raise RuntimeError("нет ключа шифрования Cursor")
+    raw = base64.b64decode(encoded)
+    if raw.startswith(b"DPAPI"):
+        raw = raw[5:]
+    return _dpapi(raw, protect=False)
+
+
+def aes_gcm_decrypt(key, nonce, cipher_and_tag):
+    if len(cipher_and_tag) < 16:
+        raise RuntimeError("не удалось расшифровать вход Cursor")
+    return _aes_gcm(key, nonce, cipher_and_tag[:-16], cipher_and_tag[-16:], encrypt=False)
+
+
+def aes_gcm_encrypt(key, nonce, plain):
+    return _aes_gcm(key, nonce, plain, None, encrypt=True)
+
+
+def _aes_gcm(key, nonce, data, tag, encrypt):
+    import ctypes
+
+    bcrypt = ctypes.WinDLL("bcrypt.dll")
+    bcrypt.BCryptOpenAlgorithmProvider.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_ulong,
+    ]
+    bcrypt.BCryptOpenAlgorithmProvider.restype = ctypes.c_long
+    bcrypt.BCryptSetProperty.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+    ]
+    bcrypt.BCryptSetProperty.restype = ctypes.c_long
+    bcrypt.BCryptGetProperty.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.POINTER(ctypes.c_ulong),
+        ctypes.c_ulong,
+    ]
+    bcrypt.BCryptGetProperty.restype = ctypes.c_long
+    bcrypt.BCryptGenerateSymmetricKey.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+    ]
+    bcrypt.BCryptGenerateSymmetricKey.restype = ctypes.c_long
+    bcrypt.BCryptDecrypt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.POINTER(ctypes.c_ulong),
+        ctypes.c_ulong,
+    ]
+    bcrypt.BCryptDecrypt.restype = ctypes.c_long
+    bcrypt.BCryptEncrypt.argtypes = bcrypt.BCryptDecrypt.argtypes
+    bcrypt.BCryptEncrypt.restype = ctypes.c_long
+    bcrypt.BCryptDestroyKey.argtypes = [ctypes.c_void_p]
+    bcrypt.BCryptDestroyKey.restype = ctypes.c_long
+    bcrypt.BCryptCloseAlgorithmProvider.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    bcrypt.BCryptCloseAlgorithmProvider.restype = ctypes.c_long
+    alg = ctypes.c_void_p()
+    key_handle = ctypes.c_void_p()
+    status = bcrypt.BCryptOpenAlgorithmProvider(ctypes.byref(alg), "AES", None, 0)
+    if status != 0:
+        raise RuntimeError("не удалось расшифровать вход Cursor, aes " + hex(status & 0xFFFFFFFF))
+    try:
+        mode = ctypes.create_unicode_buffer("ChainingModeGCM")
+        status = bcrypt.BCryptSetProperty(
+            alg,
+            "ChainingMode",
+            ctypes.cast(mode, ctypes.c_void_p),
+            ctypes.sizeof(mode),
+            0,
+        )
+        if status != 0:
+            raise RuntimeError("не удалось расшифровать вход Cursor, mode " + hex(status & 0xFFFFFFFF))
+        obj_len = ctypes.c_ulong(0)
+        written = ctypes.c_ulong(0)
+        status = bcrypt.BCryptGetProperty(
+            alg,
+            "ObjectLength",
+            ctypes.byref(obj_len),
+            ctypes.sizeof(obj_len),
+            ctypes.byref(written),
+            0,
+        )
+        if status != 0:
+            raise RuntimeError("не удалось расшифровать вход Cursor, obj " + hex(status & 0xFFFFFFFF))
+        key_object = ctypes.create_string_buffer(obj_len.value)
+        secret = ctypes.create_string_buffer(key, len(key))
+        status = bcrypt.BCryptGenerateSymmetricKey(
+            alg,
+            ctypes.byref(key_handle),
+            key_object,
+            obj_len.value,
+            secret,
+            len(key),
+            0,
+        )
+        if status != 0:
+            raise RuntimeError("не удалось расшифровать вход Cursor, key " + hex(status & 0xFFFFFFFF))
+        try:
+            class AUTH(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.c_ulong),
+                    ("dwInfoVersion", ctypes.c_ulong),
+                    ("pbNonce", ctypes.c_void_p),
+                    ("cbNonce", ctypes.c_ulong),
+                    ("pbAuthData", ctypes.c_void_p),
+                    ("cbAuthData", ctypes.c_ulong),
+                    ("pbTag", ctypes.c_void_p),
+                    ("cbTag", ctypes.c_ulong),
+                    ("pbMacContext", ctypes.c_void_p),
+                    ("cbMacContext", ctypes.c_ulong),
+                    ("cbAAD", ctypes.c_ulong),
+                    ("cbData", ctypes.c_ulonglong),
+                    ("dwFlags", ctypes.c_ulong),
+                ]
+
+            info = AUTH()
+            info.cbSize = ctypes.sizeof(AUTH)
+            info.dwInfoVersion = 1
+            nonce_buf = ctypes.create_string_buffer(nonce, len(nonce))
+            info.pbNonce = ctypes.cast(nonce_buf, ctypes.c_void_p)
+            info.cbNonce = len(nonce)
+            tag_buf = ctypes.create_string_buffer(16 if tag is None else tag, 16)
+            info.pbTag = ctypes.cast(tag_buf, ctypes.c_void_p)
+            info.cbTag = 16
+            source = ctypes.create_string_buffer(data, len(data))
+            output = ctypes.create_string_buffer(len(data))
+            out_len = ctypes.c_ulong(0)
+            function = bcrypt.BCryptEncrypt if encrypt else bcrypt.BCryptDecrypt
+            status = function(
+                key_handle,
+                source,
+                len(data),
+                ctypes.byref(info),
+                None,
+                0,
+                output,
+                len(data),
+                ctypes.byref(out_len),
+                0,
+            )
+            if status != 0:
+                raise RuntimeError("не удалось расшифровать вход Cursor, gcm " + hex(status & 0xFFFFFFFF))
+            body = output.raw[: out_len.value]
+            if encrypt:
+                return body + tag_buf.raw[:16]
+            return body
+        finally:
+            bcrypt.BCryptDestroyKey(key_handle)
+    finally:
+        bcrypt.BCryptCloseAlgorithmProvider(alg, 0)
+
+
+def _dpapi(data, protect):
+    import ctypes
+    from ctypes import wintypes
+
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    buffer = ctypes.create_string_buffer(data, len(data))
+    blob_in = DATA_BLOB(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
+    blob_out = DATA_BLOB()
+    function = ctypes.windll.crypt32.CryptProtectData if protect else ctypes.windll.crypt32.CryptUnprotectData
+    ok = function(
+        ctypes.byref(blob_in),
+        None,
+        None,
+        None,
+        None,
+        0,
+        ctypes.byref(blob_out),
+    )
+    if not ok:
+        code = ctypes.GetLastError()
+        raise RuntimeError("не удалось расшифровать вход Cursor, код " + str(code))
+    try:
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+
+
+def read_access_token():
+    token = read_auth_value("cursorAuth/accessToken")
+    if not token:
         raise RuntimeError("нет входа в Cursor")
-    return row[0]
+    return token
 
 
-def fetch_usage(token):
+def save_auth_value(key, value):
+    if key in TOKEN_KEYS:
+        current = read_stored_value(key)
+        if current and current.startswith(SAFE_STORAGE_PREFIX):
+            value = wrap_token(value)
+    connection = sqlite3.connect(STATE_DB, timeout=5)
+    try:
+        connection.execute(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            (value, key),
+        )
+        if connection.total_changes == 0:
+            connection.execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def token_expired(token):
+    parts = token.split(".")
+    if len(parts) < 2:
+        return False
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+    except (json.JSONDecodeError, ValueError):
+        return False
+    expires_at = claims.get("exp")
+    if not isinstance(expires_at, (int, float)):
+        return False
+    return expires_at <= time.time() + 120
+
+
+def refresh_access_token():
+    refresh_token = read_auth_value("cursorAuth/refreshToken")
+    if not refresh_token:
+        raise RuntimeError("в базе нет токена обновления")
+    body = json.dumps(
+        {
+            "grant_type": "refresh_token",
+            "client_id": "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB",
+            "refresh_token": refresh_token,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api2.cursor.sh/oauth/token",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        raise RuntimeError("обновление входа, ошибка " + str(error.code)) from error
+    token = payload.get("access_token") or payload.get("accessToken") or ""
+    if payload.get("shouldLogout") or not token:
+        raise RuntimeError("сессия сброшена, войдите в Cursor заново")
+    try:
+        save_auth_value("cursorAuth/accessToken", token)
+        rotated = payload.get("refresh_token") or payload.get("refreshToken") or ""
+        if rotated:
+            save_auth_value("cursorAuth/refreshToken", rotated)
+    except sqlite3.Error:
+        pass
+    return token
+
+
+def request_usage(token):
     request = urllib.request.Request(
         USAGE_URL,
         data=b"{}",
@@ -81,6 +416,17 @@ def fetch_usage(token):
     )
     with urllib.request.urlopen(request, timeout=15) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_usage(token):
+    if token_expired(token):
+        token = refresh_access_token()
+    try:
+        return request_usage(token)
+    except urllib.error.HTTPError as error:
+        if error.code != 401:
+            raise
+        return request_usage(refresh_access_token())
 
 
 def spent_percent(usage):
